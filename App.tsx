@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, Text, SafeAreaView, View, TouchableOpacity, FlatList, TextInput, ScrollView, Alert, Modal, Vibration, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 
 // --- I18N & LOCALIZATION IMPORTS ---
 import * as Localization from 'expo-localization';
@@ -18,7 +20,17 @@ const resources = {
       "subtitle_stats": "Gelişim & İstatistikler",
       "stat_volume_chart": "📈 Gelişim: Tarihsel Hacim (Kg)",
       "stat_volume_sub": "Set x Tekrar x Ağırlık",
+      "mode_weight": "🏋️ Ağırlık",
+      "mode_bw": "🤸 Vücut Ağırlığı",
+      "label_rep_sec": "Tekrar / Saniye",
+      "label_extra_kg": "Ekstra Kg",
+      "text_bw": "Vücut Ağırlığı (BW)",
       
+      //Dışa Aktarma
+      "btn_export": "📥 Verileri Dışa Aktar (CSV)",
+      "export_success": "Başarılı",
+      "export_error": "Paylaşım bu cihazda desteklenmiyor.",
+
       // Durumlar
       "status_great": "Harika 💪",
       "status_tired": "Yorgun 🔋",
@@ -168,6 +180,17 @@ const resources = {
       "warn_no_legs_cardio": "Haftalık listende hiç Bacak veya Kardiyo yok. Tavuk bacak uyarısı! 🍗",
       "warn_no_legs": "Bacak çalışmayı unuttun! Kas dengesizliği yolda.",
       "warn_no_cardio": "Kondisyonun düşüyor, sadece ağırlıkla olmaz. Kardiyo ekle!",
+
+      // Kalistenik Hareketleri
+      "ex_cal1": "Muscle-up",
+      "ex_cal2": "Front Lever",
+      "ex_cal3": "Back Lever",
+      "ex_cal4": "L-Sit",
+      "ex_cal5": "Human Flag (İnsan Bayrağı)",
+      "ex_cal6": "Handstand Push-up (Amuda Kalkarak Şınav)",
+      "ex_cal7": "Pistol Squat (Tek Bacak Squat)",
+      "ex_cal8": "Dips (Paralel Bar)",
+      "ex_cal9": "Planche",
     }
   },
   en: {
@@ -178,6 +201,15 @@ const resources = {
       "subtitle_stats": "Progress & Stats",
       "stat_volume_chart": "📈 Progression: Historical Volume (Kg)",
       "stat_volume_sub": "Sets x Reps x Weight",
+      "mode_weight": "🏋️ Weights",
+      "mode_bw": "🤸 Bodyweight",
+      "label_rep_sec": "Reps / Sec",
+      "label_extra_kg": "Extra Kg",
+      "text_bw": "Bodyweight (BW)",
+
+      "btn_export": "📥 Export Data (CSV)",
+      "export_success": "Success",
+      "export_error": "Sharing is not supported on this device.",
       
       "status_great": "Great 💪",
       "status_tired": "Tired 🔋",
@@ -316,6 +348,17 @@ const resources = {
       "warn_no_legs_cardio": "No Legs or Cardio in your weekly list. Chicken legs alert! 🍗",
       "warn_no_legs": "You forgot to train Legs! Muscle imbalance incoming.",
       "warn_no_cardio": "Your conditioning is dropping, weights aren't enough. Add Cardio!",
+
+      // Calisthenics Movements
+      "ex_cal1": "Muscle-up",
+      "ex_cal2": "Front Lever",
+      "ex_cal3": "Back Lever",
+      "ex_cal4": "L-Sit",
+      "ex_cal5": "Human Flag",
+      "ex_cal6": "Handstand Push-up (HSPU)",
+      "ex_cal7": "Pistol Squat",
+      "ex_cal8": "Parallel Bar Dips",
+      "ex_cal9": "Planche",
     }
   }
 };
@@ -372,6 +415,16 @@ const baslangicKutuphanesi = [
   { id: 'c2', isim: 'Mekik (Crunch)', bolge: 'Core', tip: 'Güvenli' },
   { id: 'v1', isim: 'Koşu Bandı (Hafif Tempo)', bolge: 'Kardiyo', tip: 'Güvenli' },
   { id: 'v6', isim: 'Tam Vücut Esneme (Stretching)', bolge: 'Tüm Vücut', tip: 'Güvenli' },
+  // --- Kalistenik (Vücut Ağırlığı) ---
+  { id: 'cal1', isim: 'Muscle-up', bolge: 'Sırt', tip: 'Zorlu' },
+  { id: 'cal2', isim: 'Front Lever', bolge: 'Core', tip: 'Zorlu' },
+  { id: 'cal3', isim: 'Back Lever', bolge: 'Core', tip: 'Zorlu' },
+  { id: 'cal4', isim: 'L-Sit', bolge: 'Core', tip: 'Zorlu' },
+  { id: 'cal5', isim: 'Human Flag', bolge: 'Core', tip: 'Zorlu' },
+  { id: 'cal6', isim: 'Handstand Push-up (HSPU)', bolge: 'Omuz', tip: 'Zorlu' },
+  { id: 'cal7', isim: 'Pistol Squat', bolge: 'Bacak', tip: 'Zorlu' },
+  { id: 'cal8', isim: 'Dips', bolge: 'Göğüs', tip: 'Zorlu' },
+  { id: 'cal9', isim: 'Planche', bolge: 'Omuz', tip: 'Zorlu' },
 ];
 
 const kategoriler = ['Tümü', 'Göğüs', 'Sırt', 'Bacak', 'Kol', 'Omuz', 'Core', 'Kardiyo', 'Tüm Vücut'];
@@ -418,6 +471,7 @@ export default function App() {
   const [ozelBolge, setOzelBolge] = useState('Göğüs'); 
 
   const [hedefHareket, setHedefHareket] = useState<any>(null); 
+  const [vucutAgirligiMi, setVucutAgirligiMi] = useState(false);
   const [setSayisi, setSetSayisi] = useState('3'); 
   const [tekrarSayisi, setTekrarSayisi] = useState('12'); 
   const [agirlik, setAgirlik] = useState(''); 
@@ -526,6 +580,12 @@ export default function App() {
         });
         await AsyncStorage.setItem('kayitliHafta', mevcutHaftaPazartesi);
       }
+
+      // 🧠 YENİ: Uyarı hafızasını kontrol et
+      const gizlenenHafta = await AsyncStorage.getItem('gizlenenUyariHaftasi');
+      if (gizlenenHafta === mevcutHaftaPazartesi) {
+        setDusmanPopUpGizlendi(true); // Eğer bu hafta zaten susturulduysa baştan gizli başlat
+      }
       
       if (sonGiris !== bugunStr) {
         guncelSu[gercekZamanliBugun] = 0;
@@ -597,6 +657,45 @@ export default function App() {
     });
   };
 
+  // --- 📥 YENİ: VERİ DIŞA AKTARMA (CSV) FONKSİYONU ---
+  const verileriDisaAktar = async () => {
+    try {
+      let csvIcerik = "Tarih,Bolge,Toplam Hacim (Kg)\n";
+      
+      Object.keys(hacimGecmisi).forEach(tarih => {
+        Object.keys(hacimGecmisi[tarih]).forEach(bolge => {
+          if(bolge !== 'Tümü' && hacimGecmisi[tarih][bolge] > 0) {
+             csvIcerik += `${tarih},${getBolgeIsmi(bolge)},${hacimGecmisi[tarih][bolge]}\n`;
+          }
+        });
+      });
+
+      const dosyaIsmi = "FitSync_Gelisim_Raporu.csv";
+      
+      const klasorYolu = FileSystem.documentDirectory || "";
+      const dosyaYolu = klasorYolu + dosyaIsmi;
+      
+      await FileSystem.writeAsStringAsync(dosyaYolu, csvIcerik, { encoding: 'utf8' });
+      
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(dosyaYolu, { dialogTitle: 'Gelişim Raporunu Paylaş' });
+      } else {
+        Alert.alert(t('alert_error'), t('export_error'));
+      }
+    } catch (error) {
+      console.log("Dışa aktarma hatası:", error);
+    }
+  };
+
+  // --- 🧠 YENİ: KOÇU BU HAFTALIK SUSTURMA HAFIZASI ---
+  const uyariyiKapat = async () => {
+    setDusmanPopUpGizlendi(true); // Ekrandan anında gizle
+    try {
+      // Hangi hafta susturulduğunu kalıcı hafızaya kaydet
+      await AsyncStorage.setItem('gizlenenUyariHaftasi', getPazartesiTarihi());
+    } catch (error) { console.log(error); }
+  };
+
   const temaDegistir = () => {
     const yeniTema = !isDarkMode;
     setIsDarkMode(yeniTema);
@@ -644,6 +743,7 @@ export default function App() {
   const kütüphanedenEkle = (secilenHareket: any) => {
     setHedefHareket(secilenHareket);
     let sonSet = '3'; let sonTekrar = '12'; let sonAgirlik = '';
+    let sonModBw = secilenHareket.isim.includes('Lever') || secilenHareket.isim.includes('Plank') || secilenHareket.isim.includes('Sit'); 
 
     gunler.forEach(gun => {
       const gecmisHareket = program[gun].find((h: any) => h.isim === secilenHareket.isim);
@@ -651,9 +751,10 @@ export default function App() {
         sonSet = gecmisHareket.set;
         sonTekrar = gecmisHareket.tekrar;
         sonAgirlik = gecmisHareket.agirlik || ''; 
+        if (gecmisHareket.isBodyweight !== undefined) sonModBw = gecmisHareket.isBodyweight;
       }
     });
-    setSetSayisi(sonSet); setTekrarSayisi(sonTekrar); setAgirlik(sonAgirlik);
+    setSetSayisi(sonSet); setTekrarSayisi(sonTekrar); setAgirlik(sonAgirlik); setVucutAgirligiMi(sonModBw);
   };
 
   const hareketProgramKayıt = () => {
@@ -663,22 +764,23 @@ export default function App() {
     if (hedefHareket.isEditing) {
       const gun = hedefHareket.editGun;
       guncelProgram[gun] = guncelProgram[gun].map((h: any) => {
-        if (h.id === hedefHareket.id) return { ...h, set: setSayisi, tekrar: tekrarSayisi, agirlik: agirlik };
+        if (h.id === hedefHareket.id) return { ...h, set: setSayisi, tekrar: tekrarSayisi, agirlik: agirlik, isBodyweight: vucutAgirligiMi };
         return h;
       });
       setProgram(guncelProgram); 
       verileriKaydet(guncelProgram); 
-      gunlukHacimiKaydet(guncelProgram); // HACİM GÜNCELLE
+      gunlukHacimiKaydet(guncelProgram); 
       Alert.alert("Güncellendi!", "Hedefler başarıyla güncellendi. Yeni rekorlara! 🚀");
     } else {
       const yeniHareket = { 
-        id: Math.random().toString(), isim: hedefHareket.isim, bolge: hedefHareket.bolge, tip: hedefHareket.tip, 
-        tamamlandi: false, set: setSayisi, tekrar: tekrarSayisi, agirlik: agirlik, refId: hedefHareket.id 
+  id: Math.random().toString(), isim: hedefHareket.isim, bolge: hedefHareket.bolge, tip: hedefHareket.tip, 
+  tamamlandi: false, set: setSayisi, tekrar: tekrarSayisi, agirlik: agirlik, refId: hedefHareket.id,
+  isBodyweight: vucutAgirligiMi
       };
       guncelProgram[seciliGun] = [...guncelProgram[seciliGun], yeniHareket];
       setProgram(guncelProgram); 
       verileriKaydet(guncelProgram); 
-      gunlukHacimiKaydet(guncelProgram); // HACİM GÜNCELLE
+      gunlukHacimiKaydet(guncelProgram); 
       Alert.alert(t('alert_added'), t('alert_added_msg', {name: getHareketIsmi(hedefHareket)}));
     }
     setHedefHareket(null); 
@@ -692,7 +794,7 @@ export default function App() {
           guncelProgram[gun] = guncelProgram[gun].filter((h: any) => h.id !== hareketId);
           setProgram(guncelProgram); 
           verileriKaydet(guncelProgram);
-          gunlukHacimiKaydet(guncelProgram); // HACİM GÜNCELLE
+          gunlukHacimiKaydet(guncelProgram); 
         }
       }
     ]);
@@ -714,12 +816,11 @@ export default function App() {
 
     setProgram(guncelProgram);
     verileriKaydet(guncelProgram); 
-    gunlukHacimiKaydet(guncelProgram); // HACİM GÜNCELLE
+    gunlukHacimiKaydet(guncelProgram); 
 
-    // --- 🏆 YENİ: TÜM ZAMANLAR İSTATİSTİĞİNİ GÜNCELLE ---
     if (hareketBolgesi !== '') {
       const yeniIstatistikler = { ...genelIstatistikler };
-      if(!yeniIstatistikler.bolgeler) yeniIstatistikler.bolgeler = {}; // Güvenlik kontrolü
+      if(!yeniIstatistikler.bolgeler) yeniIstatistikler.bolgeler = {}; 
 
       if (tikAatildiMi) {
         yeniIstatistikler.toplam = (yeniIstatistikler.toplam || 0) + 1;
@@ -746,6 +847,7 @@ export default function App() {
     setSetSayisi(hareket.set ? hareket.set.toString() : '3');
     setTekrarSayisi(hareket.tekrar ? hareket.tekrar.toString() : '12');
     setAgirlik(hareket.agirlik ? hareket.agirlik.toString() : '');
+    setVucutAgirligiMi(hareket.isBodyweight || false); 
   };
 
   const filtrelenmisKutuphane = kutuphane.filter((hareket) => {
@@ -770,20 +872,33 @@ export default function App() {
   const gunlukOzelSoguma = tumSogumaRutinleri.filter((rutin) => rutin.bolge === 'Genel' || gununAktifKasGruplari.includes(rutin.bolge));
   const hepsiTamamlandi = filtrelenmisGunlukListe.length > 0 && filtrelenmisGunlukListe.every((h: any) => h.tamamlandi);
 
+  // --- 🧠 YENİ: ACIMASIZ VE GERÇEKÇİ DÜŞMAN BÖLGE ANALİZİ ---
   const dusmanBolgeAnalizEt = () => {
-    let bacakYapildiMi = false;
-    let kardiyoYapildiMi = false;
+    // 1. Yeni kullanıcıları hemen darlamamak için önce veritabanında en az 3 günlük kayıt var mı ona bakalım
+    const gecmisGunSayisi = Object.keys(hacimGecmisi).length;
+    if (gecmisGunSayisi < 3) return null; // Kullanıcı uygulamayı yeni yüklediyse koç sessiz kalıp veri toplar
 
-    Object.values(program).forEach((gunlukListe: any) => {
-      gunlukListe.forEach((hareket: any) => {
-        if (hareket.bolge === 'Bacak') bacakYapildiMi = true;
-        if (hareket.bolge === 'Kardiyo') kardiyoYapildiMi = true;
-      });
-    });
+    // 2. Niyete değil icraata bak: Son 7 günü tara!
+    let son7GundeBacakYapildiMi = false;
+    let son7GundeKardiyoYapildiMi = false;
 
-    if (!bacakYapildiMi && !kardiyoYapildiMi) return t('warn_no_legs_cardio');
-    if (!bacakYapildiMi) return t('warn_no_legs');
-    if (!kardiyoYapildiMi) return t('warn_no_cardio');
+    const bugun = new Date();
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(bugun);
+      d.setDate(d.getDate() - i);
+      const tarihStr = d.toDateString();
+
+      // O gün gerçekten antrenman yapılmış ve tik atılmış mı?
+      if (hacimGecmisi[tarihStr]) {
+        if (hacimGecmisi[tarihStr]['Bacak'] > 0) son7GundeBacakYapildiMi = true;
+        if (hacimGecmisi[tarihStr]['Kardiyo'] > 0) son7GundeKardiyoYapildiMi = true;
+      }
+    }
+
+    // 3. İcraat yoksa cezayı kes!
+    if (!son7GundeBacakYapildiMi && !son7GundeKardiyoYapildiMi) return t('warn_no_legs_cardio');
+    if (!son7GundeBacakYapildiMi) return t('warn_no_legs');
+    if (!son7GundeKardiyoYapildiMi) return t('warn_no_cardio');
      
     return null; 
   };
@@ -834,7 +949,6 @@ export default function App() {
   // --- 📈 İSTATİSTİK VE GRAFİK HESAPLAMALARI ---
   let aktifGunler: string[] = [];
 
-  // Haftalık Etkinlik Grafiği (Mevcut haftaya göre)
   const grafikVerisi = gunler.map(gun => {
     let oGunTamamlanan = 0;
     program[gun].forEach((h: any) => {
@@ -846,7 +960,6 @@ export default function App() {
 
   const maxGrafikDegeri = Math.max(...grafikVerisi.map(v => v.tamamlanan), 1);
 
-  // --- 🏆 TÜM ZAMANLAR HESAPLAMASI (Tepedeki İki Kart İçin) ---
   const toplamTamamlanan = genelIstatistikler.toplam || 0;
   
   let enCokCalisilanBolgeAnahtari = "";
@@ -865,18 +978,15 @@ export default function App() {
     ? getBolgeIsmi(enCokCalisilanBolgeAnahtari) 
     : "-";
 
-  // --- 📈 TARİHSEL HACİM GRAFİĞİ HESAPLAMALARI ---
-  // Seçili bölgenin çalışıldığı günleri kronolojik sıraya dizer ve son 7 tanesini alır
   const gecmisTarihler = Object.keys(hacimGecmisi).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
   const seciliGecmis = gecmisTarihler.filter(tarih => hacimGecmisi[tarih] && hacimGecmisi[tarih][grafikBolge] > 0).slice(-7); 
 
   const cizimVerisi = seciliGecmis.map(tarih => {
     const d = new Date(tarih);
-    const kisaTarih = `${d.getDate()}/${d.getMonth()+1}`; // Örn: 24/2 formatında
+    const kisaTarih = `${d.getDate()}/${d.getMonth()+1}`; 
     return { etiket: kisaTarih, hacim: hacimGecmisi[tarih][grafikBolge] };
   });
 
-  // Veri yoksa grafiğin boş ve düzgün durması için sahte bir veri ekliyoruz
   const gercekCizimVerisi = cizimVerisi.length > 0 ? cizimVerisi : [{etiket: '-', hacim: 0}];
   const maxHacimDegeri = Math.max(...gercekCizimVerisi.map(v => v.hacim), 1);
 
@@ -904,7 +1014,8 @@ export default function App() {
             <Text style={{ color: isDarkMode ? '#fca5a5' : '#7F1D1D', fontSize: 12, fontStyle: 'italic', textAlign: 'center', marginBottom: 20 }}>
               {t('enemy_alert_sub')}
             </Text>
-            <TouchableOpacity style={{ backgroundColor: '#EF4444', paddingVertical: 15, paddingHorizontal: 20, borderRadius: 12, alignItems: 'center' }} onPress={() => setDusmanPopUpGizlendi(true)}>
+            {/* 🧠 GÜNCELLEME: Butona basıldığında artık bu hafta için uyarıyı susturacak */}
+            <TouchableOpacity style={{ backgroundColor: '#EF4444', paddingVertical: 15, paddingHorizontal: 20, borderRadius: 12, alignItems: 'center' }} onPress={uyariyiKapat}>
               <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>{t('enemy_btn')}</Text>
             </TouchableOpacity>
           </View>
@@ -914,23 +1025,39 @@ export default function App() {
       <Modal visible={hedefHareket !== null} transparent={true} animationType="fade">
         <View style={styles.modalArkaPlan}>
           <View style={[styles.modalKutu, { backgroundColor: theme.card }]}>
+            
+            {/* 1. BAŞLIKLAR */}
             <Text style={[styles.modalBaslik, { color: theme.textMain }]}>{hedefHareket ? getHareketIsmi(hedefHareket) : ''}</Text>
-            <Text style={[styles.modalAltBaslik, { color: theme.textSub }]}>{t('modal_target_title')}</Text>
+            <Text style={[styles.modalAltBaslik, { color: theme.textSub, marginBottom: 15 }]}>{t('modal_target_title')}</Text>
+
+            {/* 2. 🤸 İŞTE O SİHİRLİ KALİSTENİK ANAHTARI BURADA DURMALI */}
+            <View style={{flexDirection: 'row', backgroundColor: theme.inputBg, borderRadius: 10, padding: 4, marginBottom: 20, borderWidth: 1, borderColor: theme.border}}>
+              <TouchableOpacity style={{flex: 1, paddingVertical: 8, borderRadius: 8, backgroundColor: !vucutAgirligiMi ? theme.buttonBg : 'transparent'}} onPress={() => setVucutAgirligiMi(false)}>
+                <Text style={{textAlign: 'center', fontWeight: 'bold', color: !vucutAgirligiMi ? theme.textMain : theme.textSub}}>{t('mode_weight')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={{flex: 1, paddingVertical: 8, borderRadius: 8, backgroundColor: vucutAgirligiMi ? theme.buttonBg : 'transparent'}} onPress={() => setVucutAgirligiMi(true)}>
+                <Text style={{textAlign: 'center', fontWeight: 'bold', color: vucutAgirligiMi ? theme.textMain : theme.textSub}}>{t('mode_bw')}</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* 3. KUTUCUKLAR (Seçilen moda göre isimleri değişir) */}
             <View style={styles.modalGirdiSatiri}>
               <View style={styles.modalGirdiKutusu}>
                 <Text style={[styles.formBaslik, { color: theme.textMain }]}>{t('label_set')}</Text>
                 <TextInput style={[styles.input, { backgroundColor: theme.inputBg, color: theme.textMain, borderColor: theme.border }]} value={setSayisi} onChangeText={setSetSayisi} keyboardType="numeric" />
               </View>
               <View style={styles.modalGirdiKutusu}>
-                <Text style={[styles.formBaslik, { color: theme.textMain }]}>{t('label_rep')}</Text>
+                <Text style={[styles.formBaslik, { color: theme.textMain, fontSize: 13 }]}>{vucutAgirligiMi ? t('label_rep_sec') : t('label_rep')}</Text>
                 <TextInput style={[styles.input, { backgroundColor: theme.inputBg, color: theme.textMain, borderColor: theme.border }]} value={tekrarSayisi} onChangeText={setTekrarSayisi} keyboardType="numeric" />
               </View>
               <View style={styles.modalGirdiKutusu}>
-                <Text style={[styles.formBaslik, { color: theme.textMain }]}>{t('label_kg')}</Text>
-                <TextInput style={[styles.input, { backgroundColor: theme.inputBg, color: theme.textMain, borderColor: theme.border }]} value={agirlik} onChangeText={setAgirlik} keyboardType="numeric" placeholder="60" placeholderTextColor={theme.textSub} />
+                <Text style={[styles.formBaslik, { color: theme.textMain, fontSize: 13 }]}>{vucutAgirligiMi ? t('label_extra_kg') : t('label_kg')}</Text>
+                <TextInput style={[styles.input, { backgroundColor: theme.inputBg, color: theme.textMain, borderColor: theme.border }]} value={agirlik} onChangeText={setAgirlik} keyboardType="numeric" placeholder={vucutAgirligiMi ? "0" : "60"} placeholderTextColor={theme.textSub} />
               </View>
             </View>
-            <View style={{flexDirection: 'row', gap: 10, marginTop: 20}}>
+
+            {/* 4. KAYDET VE İPTAL BUTONLARI */}
+            <View style={{flexDirection: 'row', gap: 10, marginTop: 15}}>
               <TouchableOpacity style={[styles.ekleButonu, {flex: 1, backgroundColor: '#10B981', paddingVertical: 12}]} onPress={hareketProgramKayıt}>
                 <Text style={[styles.ekleButonuYazi, {textAlign: 'center'}]}>{t('btn_save')}</Text>
               </TouchableOpacity>
@@ -938,6 +1065,7 @@ export default function App() {
                 <Text style={[styles.ekleButonuYazi, {textAlign: 'center'}]}>{t('btn_cancel')}</Text>
               </TouchableOpacity>
             </View>
+
           </View>
         </View>
       </Modal>
@@ -1085,6 +1213,10 @@ export default function App() {
                  const gorunenIsim = item.refId 
                     ? (i18n.exists(`ex_${item.refId}`) ? t(`ex_${item.refId}`) : item.isim) 
                     : getHareketIsmi(item);
+                    const tekrarMetni = item.isBodyweight ? t('label_rep_sec') : t('label_rep');
+                    const agirlikMetni = item.isBodyweight 
+                    ? (item.agirlik && item.agirlik !== '0' ? `BW + ${item.agirlik}kg` : t('text_bw'))
+                    : (item.agirlik ? `${item.agirlik} kg` : '');
 
                  return (
                   <View key={item.id} style={[styles.hareketKutu, { backgroundColor: theme.card, borderColor: theme.border, borderWidth: 1 }, item.tamamlandi && [styles.hareketKutuTamamlandi, isDarkMode && { backgroundColor: '#111827' }]]}>
@@ -1097,8 +1229,8 @@ export default function App() {
                           {gorunenIsim}
                         </Text>
                         <Text style={[styles.hareketBolge, { color: theme.textSub }]}>
-                          {getBolgeIsmi(item.bolge)}  •  {item.set ? `${item.set} Set x ${item.tekrar} ${t('label_rep')}` : ''} 
-                          {item.agirlik ? ` | ${item.agirlik} kg` : ''}
+                          {getBolgeIsmi(item.bolge)}  •  {item.set ? `${item.set} Set x ${item.tekrar} ${tekrarMetni}` : ''} 
+                          {agirlikMetni ? ` | ${agirlikMetni}` : ''}
                         </Text>
                       </View>
                     </View>
@@ -1289,6 +1421,13 @@ export default function App() {
                 })}
               </View>
             </View>
+            {/* 📥 DIŞA AKTAR BUTONU */}
+            <TouchableOpacity 
+              style={{ backgroundColor: '#10B981', padding: 15, borderRadius: 12, alignItems: 'center', marginTop: 10, marginBottom: 30 }} 
+              onPress={verileriDisaAktar}
+            >
+              <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>{t('btn_export')}</Text>
+            </TouchableOpacity>
           </ScrollView>
         </View>
       )}
